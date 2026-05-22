@@ -317,8 +317,15 @@ class ApiRouter extends WireData implements Module, ConfigurableModule {
     }
 
     /**
+     * Normalize JSON body into $_POST / $input->post so endpoints
+     * can use either content-type transparently.
+     */
+    $this->normalizeRequestData();
+
+    /**
      * Expose useful variables to endpoint
      */
+    $input     = $this->wire('input');
     $apiRouter = $this;
     $apiModule = $module;
     $apiClient = $this->currentApiClient;
@@ -348,6 +355,41 @@ class ApiRouter extends WireData implements Module, ConfigurableModule {
     } catch (\Throwable $e) {
 
       return $this->serverError($e->getMessage());
+    }
+  }
+
+  /**
+   * Normalize request data.
+   *
+   * When the request body is JSON (Content-Type: application/json), parse it
+   * and inject each key into both the $_POST superglobal and ProcessWire's
+   * $input->post so that endpoints can read data with $input->post, $_POST,
+   * $input->get, or $_GET regardless of how the client sent the payload.
+   */
+  protected function normalizeRequestData(): void {
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+
+    if (strpos($contentType, 'application/json') === false) {
+      return;
+    }
+
+    $body = file_get_contents('php://input');
+
+    if (!$body) {
+      return;
+    }
+
+    $json = json_decode($body, true);
+
+    if (!is_array($json)) {
+      return;
+    }
+
+    $post = $this->wire('input')->post;
+
+    foreach ($json as $key => $value) {
+      $_POST[$key] = $value;
+      $post->set($key, $value);
     }
   }
 

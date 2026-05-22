@@ -154,13 +154,43 @@ This lets you customise individual endpoints without touching module files, whic
 
 ## Writing an Endpoint
 
-Each endpoint file is `include()`d and has access to three pre-injected variables:
+Each endpoint file is `include()`d and has access to these pre-injected variables:
 
 | Variable     | Type     | Description                                        |
-|--------------|----------|----------------------------------------------------|
+|--------------|----------|----------------------------------------------------||
+| `$input`     | WireInput | ProcessWire input object. Use `$input->post`, `$input->get`. |
 | `$apiRouter` | ApiRouter | The router instance. Use `$apiRouter->json()` for custom responses. |
 | `$apiModule` | Module   | The module instance that owns this endpoint.       |
 | `$apiClient` | string\|null | The name of the authenticated API client (e.g. `'frontend'`), or `null` if auth is disabled. |
+
+---
+
+## Request Data
+
+ApiRouter normalizes the incoming request so endpoints can read input the same way regardless of whether the client sends `application/json` or `multipart/form-data` / `application/x-www-form-urlencoded`.
+
+When `Content-Type: application/json` is detected the JSON body is parsed and each key is injected into both `$_POST` and ProcessWire's `$input->post`. Standard form submissions are already handled natively by PHP, so no extra work is done for those.
+
+| How the client sends data | How to read it in an endpoint |
+|---------------------------|-------------------------------|
+| JSON body | `$input->post->name`, `$_POST['name']` |
+| Form-data / URL-encoded | `$input->post->name`, `$_POST['name']` |
+| Query string | `$input->get->name`, `$_GET['name']` |
+
+```php
+<?php namespace ProcessWire;
+
+// Works for JSON body, form-data, and URL-encoded — no special handling needed
+$name  = $input->post->name;      // via ProcessWire (sanitized)
+$email = $_POST['email'] ?? null;  // via superglobal
+$page  = $input->get->int('page'); // query-string param, cast to int
+
+return ['name' => $name, 'email' => $email];
+```
+
+> **Note:** `$input->post` applies ProcessWire's output formatting. For raw values use `$input->post->name` or `$_POST['name']`. For typed values use helpers like `$input->post->int('qty')`, `$input->post->email('email')`, etc.
+
+---
 
 Return an array to send a JSON response automatically:
 
