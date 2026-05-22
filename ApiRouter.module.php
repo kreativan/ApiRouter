@@ -26,7 +26,7 @@ namespace ProcessWire;
 class ApiRouter extends WireData implements Module, ConfigurableModule {
 
   protected ?string $currentApiClient = null;
-  const API_PREFIX = 'json-api';
+  const API_PREFIX = 'api';
 
   /**
    * Module info
