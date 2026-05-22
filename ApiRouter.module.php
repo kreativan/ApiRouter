@@ -6,6 +6,8 @@ namespace ProcessWire;
  * ApiRouter
  *
  * Lightweight modular API router for ProcessWire.
+ * 
+ * @author Ivan Milincic <ivan@milincic.com>
  *
  * Example:
  * /json-api/project-tracking/new/
@@ -35,7 +37,7 @@ class ApiRouter extends WireData implements Module, ConfigurableModule {
       'version'      => 1,
       'icon'         => 'code-fork',
       'summary'      => 'Lightweight module based API router',
-      'author'       => 'Your Name',
+      'author'       => 'Ivan Milincic',
       'autoload'     => true,
       'singular'     => true,
       'configurable' => true,
