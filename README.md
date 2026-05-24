@@ -1,6 +1,6 @@
 # ApiRouter
 
-Lightweight modular API router for ProcessWire. Hooks `/json-api/{route}/{endpoint}/` and resolves requests to PHP files inside any module that has an `api/` directory.
+Lightweight modular API router for ProcessWire. Hooks `/api/{route}/{endpoint}/` and resolves requests to PHP files inside any module that has an `api/` directory.
 
 ---
 
@@ -9,7 +9,7 @@ Lightweight modular API router for ProcessWire. Hooks `/json-api/{route}/{endpoi
 ### URL Structure
 
 ```
-/json-api/{route}/{endpoint}/
+/api/{route}/{endpoint}/
 ```
 
 | Segment    | Description                                          |
@@ -20,14 +20,14 @@ Lightweight modular API router for ProcessWire. Hooks `/json-api/{route}/{endpoi
 **Examples:**
 
 ```
-/json-api/project-tracking/          → /site/modules/ProjectTracking/api/index.php
-/json-api/project-tracking/new/      → /site/modules/ProjectTracking/api/new.php
-/json-api/project-tracking/archive/  → /site/modules/ProjectTracking/api/archive.php
+/api/project-tracking/          → /site/modules/ProjectTracking/api/index.php
+/api/project-tracking/new/      → /site/modules/ProjectTracking/api/new.php
+/api/project-tracking/archive/  → /site/modules/ProjectTracking/api/archive.php
 ```
 
 ### Request Flow
 
-1. ProcessWire hook intercepts any request matching `(/json-api/.*)`.
+1. ProcessWire hook intercepts any request matching `(/api/.*)`.
 2. The URL prefix is stripped, leaving `route/endpoint`.
 3. ApiRouter builds a **route registry** by scanning the filesystem for modules that contain an `api/` subdirectory. Route names are auto-derived from module class names (`CamelCase` → `kebab-case`). The registry is **cached indefinitely** and invalidated automatically on `Modules::refresh`.
 4. The matching module is resolved, and checks run in this order:
@@ -124,9 +124,9 @@ Place endpoint files inside an `api/` subfolder of your module:
 /site/modules/ProjectTracking/
     ProjectTracking.module.php
     api/
-        index.php       → /json-api/project-tracking/
-        new.php         → /json-api/project-tracking/new/
-        archive.php     → /json-api/project-tracking/archive/
+        index.php       → /api/project-tracking/
+        new.php         → /api/project-tracking/new/
+        archive.php     → /api/project-tracking/archive/
 ```
 
 ---
@@ -295,7 +295,7 @@ A request sent with `Authorization: Bearer xyz456secrettoken` will result in `$a
 **Bearer token only** — suitable for server-to-server or SPA requests:
 
 ```js
-const response = await fetch('/json-api/project-tracking/new/', {
+const response = await fetch('/api/project-tracking/new/', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -310,7 +310,7 @@ const data = await response.json();
 **Login session only** — the browser sends the ProcessWire session cookie automatically; no token needed:
 
 ```js
-const response = await fetch('/json-api/project-tracking/new/', {
+const response = await fetch('/api/project-tracking/new/', {
   method: 'POST',
   credentials: 'same-origin', // include session cookie
   headers: {
@@ -325,7 +325,7 @@ const data = await response.json();
 **Both token and login session** — when **Require API Key** and **Require Login** are both enabled:
 
 ```js
-const response = await fetch('/json-api/project-tracking/new/', {
+const response = await fetch('/api/project-tracking/new/', {
   method: 'POST',
   credentials: 'same-origin',
   headers: {
