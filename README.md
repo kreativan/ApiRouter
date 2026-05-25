@@ -157,7 +157,7 @@ This lets you customise individual endpoints without touching module files, whic
 Each endpoint file is `include()`d and has access to these pre-injected variables:
 
 | Variable     | Type     | Description                                        |
-|--------------|----------|----------------------------------------------------||
+|--------------|----------|----------------------------------------------------| 
 | `$input`     | WireInput | ProcessWire input object. Use `$input->post`, `$input->get`. |
 | `$apiRouter` | ApiRouter | The router instance. Use `$apiRouter->json()` for custom responses. |
 | `$apiModule` | Module   | The module instance that owns this endpoint.       |
