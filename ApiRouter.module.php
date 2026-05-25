@@ -10,7 +10,7 @@ namespace ProcessWire;
  * @author Ivan Milincic <ivan@milincic.com>
  *
  * Example:
- * /json-api/project-tracking/new/
+ * /api/project-tracking/new/
  *
  * Resolves to:
  * /site/modules/ProjectTracking/api/new.php
@@ -25,7 +25,6 @@ namespace ProcessWire;
  */
 class ApiRouter extends WireData implements Module, ConfigurableModule {
 
-  protected ?string $currentApiClient = null;
   const API_PREFIX = 'api';
 
   /**
@@ -34,13 +33,14 @@ class ApiRouter extends WireData implements Module, ConfigurableModule {
   public static function getModuleInfo() {
     return [
       'title'        => 'Api Router',
-      'version'      => 1,
+      'version'      => 200,
       'icon'         => 'code-fork',
-      'summary'      => 'Lightweight module based API router',
+      'summary'      => 'Lightweight module based API router. CORS and API-key auth delegated to Auth module.',
       'author'       => 'Ivan Milincic',
       'autoload'     => true,
       'singular'     => true,
       'configurable' => true,
+      'requires'     => ['Auth'],
     ];
   }
 
@@ -49,14 +49,7 @@ class ApiRouter extends WireData implements Module, ConfigurableModule {
    */
   public static function getDefaultData(): array {
     return [
-      'auth'            => 0,
-      'login'           => 0,
-      'cors'            => 0,
-      'corsOrigins'     => '*',
-      'corsMethods'     => 'GET, POST, OPTIONS',
-      'corsHeaders'     => 'Content-Type, Authorization',
-      'corsCredentials' => 0,
-      'corsMaxAge'      => '',
+      'login' => 0,
     ];
   }
 
@@ -64,79 +57,22 @@ class ApiRouter extends WireData implements Module, ConfigurableModule {
    * Module config inputfields
    */
   public function getModuleConfigInputfields(array $data): InputfieldWrapper {
-    $data       = array_merge(self::getDefaultData(), $data);
-    $modules    = $this->wire('modules');
+    $data        = array_merge(self::getDefaultData(), $data);
+    $modules     = $this->wire('modules');
     $inputfields = $this->wire(new InputfieldWrapper());
 
-    /** Auth */
-    $f = $modules->get('InputfieldCheckbox');
-    $f->attr('name', 'auth');
-    $f->attr('value', 1);
-    $f->label       = __('Require API Key (Global)');
-    $f->description = __('Require a Bearer token from $config->apiKeys for all routes.');
-    $f->notes       = __('API keys are defined in site/config.php as $config->apiKeys = ["client" => "secret"]');
-    if ($data['auth']) $f->attr('checked', 'checked');
-    $inputfields->append($f);
-
-    /** Login */
     $f = $modules->get('InputfieldCheckbox');
     $f->attr('name', 'login');
     $f->attr('value', 1);
-    $f->label       = __('Require Login (Global)');
+    $f->label       = __('Require Login');
     $f->description = __('Require a logged-in ProcessWire user for all routes.');
     if ($data['login']) $f->attr('checked', 'checked');
     $inputfields->append($f);
 
-    /** CORS fieldset */
-    $fieldset = $modules->get('InputfieldFieldset');
-    $fieldset->label = __('CORS Settings (Global)');
-    $fieldset->description = __('These settings apply to all routes.');
-
-    $f = $modules->get('InputfieldCheckbox');
-    $f->attr('name', 'cors');
-    $f->attr('value', 1);
-    $f->label = __('Enable CORS');
-    if ($data['cors']) $f->attr('checked', 'checked');
-    $fieldset->append($f);
-
-    $f = $modules->get('InputfieldText');
-    $f->attr('name', 'corsOrigins');
-    $f->attr('value', $data['corsOrigins']);
-    $f->label       = __('Allowed Origins');
-    $f->description = __('Comma-separated list of origins, or * for all. E.g. https://example.com, https://app.example.com');
-    $fieldset->append($f);
-
-    $f = $modules->get('InputfieldText');
-    $f->attr('name', 'corsMethods');
-    $f->attr('value', $data['corsMethods']);
-    $f->label = __('Allowed Methods');
-    $f->description = __('Comma-separated list. OPTIONS is always included.');
-    $fieldset->append($f);
-
-    $f = $modules->get('InputfieldText');
-    $f->attr('name', 'corsHeaders');
-    $f->attr('value', $data['corsHeaders']);
-    $f->label = __('Allowed Headers');
-    $f->description = __('Comma-separated list of allowed request headers.');
-    $fieldset->append($f);
-
-    $f = $modules->get('InputfieldCheckbox');
-    $f->attr('name', 'corsCredentials');
-    $f->attr('value', 1);
-    $f->label = __('Allow Credentials');
-    $f->description = __('Send Access-Control-Allow-Credentials: true. Cannot be used with wildcard origin.');
-    if ($data['corsCredentials']) $f->attr('checked', 'checked');
-    $fieldset->append($f);
-
-    $f = $modules->get('InputfieldInteger');
-    $f->attr('name', 'corsMaxAge');
-    $f->attr('value', $data['corsMaxAge']);
-    $f->label       = __('Preflight Max Age (seconds)');
-    $f->description = __('How long browsers may cache the preflight response. Leave blank to omit.');
-    $f->required    = false;
-    $fieldset->append($f);
-
-    $inputfields->append($fieldset);
+    $note = $modules->get('InputfieldMarkup');
+    $note->label = __('CORS & API Key Auth');
+    $note->value = '<p>' . __('CORS settings and API key authentication are configured in the <strong>Auth</strong> module.') . '</p>';
+    $inputfields->append($note);
 
     return $inputfields;
   }
@@ -168,8 +104,8 @@ class ApiRouter extends WireData implements Module, ConfigurableModule {
     header('Content-Type: application/json; charset=utf-8');
 
     /**
-     * arguments(1) = capture group from '(/json-api/.*)'
-     * e.g. "/json-api/project-tracking/test"
+     * arguments(1) = capture group from '(/api/.*)'
+     * e.g. "/api/project-tracking/test"
      */
     $rawPath = $event->arguments(1);
 
@@ -178,7 +114,7 @@ class ApiRouter extends WireData implements Module, ConfigurableModule {
     }
 
     /**
-     * Strip the /json-api/ prefix, leaving "route/endpoint"
+     * Strip the /api/ prefix, leaving "route/endpoint"
      */
     $apiPrefix = self::API_PREFIX;
     $path = trim(preg_replace("#^/$apiPrefix/#", '', $rawPath), '/');
@@ -231,61 +167,37 @@ class ApiRouter extends WireData implements Module, ConfigurableModule {
       return $this->notFound('Module not found');
     }
 
-    /**
-     * Build config from global ApiRouter module settings
-     */
-    $cors = false;
-    if ($this->cors) {
-      $rawOrigins = $this->corsOrigins ?: '*';
-      $origins    = array_filter(array_map('trim', explode(',', $rawOrigins)));
-      $cors       = ['origin' => $origins ?: ['*']];
-      if ($this->corsMethods)     $cors['methods']     = array_map('trim', explode(',', $this->corsMethods));
-      if ($this->corsHeaders)     $cors['headers']     = array_map('trim', explode(',', $this->corsHeaders));
-      if ($this->corsCredentials) $cors['credentials'] = true;
-      if ($this->corsMaxAge)      $cors['maxAge']      = (int) $this->corsMaxAge;
-    }
-
-    $effectiveConfig = [
-      'auth'  => (bool) $this->auth,
-      'login' => (bool) $this->login,
-      'cors'  => $cors,
-    ];
+    /** @var Auth $auth */
+    $auth = $modules->get('Auth');
 
     /**
      * CORS headers — must run before auth so that OPTIONS preflight
      * requests (which carry no credentials) are not rejected.
      */
-    if (!empty($effectiveConfig['cors'])) {
+    $auth->sendCorsHeaders();
 
-      $this->sendCorsHeaders($effectiveConfig['cors']);
-
-      /**
-       * Preflight request — respond immediately, no auth required.
-       */
-      if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
-        http_response_code(204);
-        return;
-      }
+    /**
+     * Preflight request — respond immediately, no auth required.
+     */
+    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+      http_response_code(204);
+      return;
     }
 
     /**
-     * Auth check
+     * API key check — controlled by Auth module config.
      */
-    if (!empty($effectiveConfig['auth'])) {
-
-      if (!$this->validateApiKey()) {
-
+    if ($auth->requiresApiKey()) {
+      if (!$auth->validateApiKey()) {
         return $this->unauthorized();
       }
     }
 
     /**
-     * Login check
+     * Login check — controlled by ApiRouter module config.
      */
-    if (!empty($effectiveConfig['login'])) {
-
+    if ($this->login) {
       if (!wire('user')->isLoggedin()) {
-
         return $this->unauthorized();
       }
     }
@@ -330,7 +242,7 @@ class ApiRouter extends WireData implements Module, ConfigurableModule {
     $input     = $this->wire('input');
     $apiRouter = $this;
     $apiModule = $module;
-    $apiClient = $this->currentApiClient;
+    $apiClient = $auth->getApiClient();
 
     try {
 
@@ -390,6 +302,9 @@ class ApiRouter extends WireData implements Module, ConfigurableModule {
     $post = $this->wire('input')->post;
 
     foreach ($json as $key => $value) {
+      // Only inject keys that are valid PHP/PW field names.
+      // Reject anything that could shadow PW internals or inject selector fragments.
+      if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $key)) continue;
       $_POST[$key] = $value;
       $post->set($key, $value);
     }
@@ -411,7 +326,7 @@ class ApiRouter extends WireData implements Module, ConfigurableModule {
     $registry   = [];
     $modulesDir = wire('config')->paths->siteModules;
 
-    foreach (glob($modulesDir . '*/api/', GLOB_ONLYDIR) as $apiDir) {
+    foreach (glob($modulesDir . '*/api/', GLOB_ONLYDIR) ?: [] as $apiDir) {
       $moduleName = basename(dirname($apiDir));
       $route = strtolower(
         preg_replace('/([a-z])([A-Z])/', '$1-$2', $moduleName)
@@ -426,133 +341,15 @@ class ApiRouter extends WireData implements Module, ConfigurableModule {
   }
 
   /**
-   * Validate API key
-   *
-   * Authorization: Bearer YOUR_KEY
-   */
-  protected function validateApiKey(): bool {
-    $config = wire('config');
-
-    /**
-     * API keys must exist
-     */
-    if (empty($config->apiKeys)) {
-      return false;
-    }
-
-    /**
-     * Get auth header
-     */
-    $header =
-      $_SERVER['HTTP_AUTHORIZATION']
-      ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
-      ?? '';
-
-    if (!$header) {
-      return false;
-    }
-
-    /**
-     * Parse Bearer token
-     */
-    if (!preg_match('/Bearer\\s+(.*)$/i', $header, $matches)) {
-      return false;
-    }
-
-    $token = trim($matches[1]);
-
-    /**
-     * Named keys
-     *
-     * Example:
-     * [
-     *   'frontend' => 'abc123',
-     *   'mobile' => 'xyz456'
-     * ]
-     */
-    $client = array_search(
-      $token,
-      $config->apiKeys,
-      true
-    );
-
-    if ($client === false) {
-      return false;
-    }
-
-    $this->currentApiClient = $client;
-
-    return true;
-  }
-
-  /**
-   * Send CORS headers
-   *
-   * cors => true
-   * cors => [
-   *   'origin'      => 'https://example.com',
-   *   'methods'     => ['GET', 'POST'],
-   *   'headers'     => ['Content-Type', 'Authorization'],
-   *   'credentials' => true,
-   *   'maxAge'      => 3600,
-   * ]
-   */
-  protected function sendCorsHeaders($cors): void {
-    $allowedOrigins = ['*'];
-    $methods        = ['GET', 'POST', 'OPTIONS'];
-    $headers        = ['Content-Type', 'Authorization'];
-    $credentials    = false;
-    $maxAge         = null;
-
-    if (is_array($cors)) {
-      if (!empty($cors['origin']))     $allowedOrigins = (array) $cors['origin'];
-      if (!empty($cors['methods']))    $methods        = array_unique(array_merge((array) $cors['methods'], ['OPTIONS']));
-      if (!empty($cors['headers']))    $headers        = (array) $cors['headers'];
-      if (isset($cors['credentials'])) $credentials    = (bool) $cors['credentials'];
-      if (!empty($cors['maxAge']))     $maxAge         = (int) $cors['maxAge'];
-    }
-
-    /**
-     * Single wildcard — send as-is
-     */
-    if ($allowedOrigins === ['*']) {
-
-      header('Access-Control-Allow-Origin: *');
-    } else {
-
-      /**
-       * Reflect the request origin if it is in the allowed list.
-       * Always send Vary: Origin so caches store separate responses
-       * per origin.
-       */
-      $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
-
-      header('Vary: Origin');
-
-      if (in_array($requestOrigin, $allowedOrigins, true)) {
-        header('Access-Control-Allow-Origin: ' . $requestOrigin);
-      }
-    }
-
-    header('Access-Control-Allow-Methods: ' . implode(', ', $methods));
-    header('Access-Control-Allow-Headers: ' . implode(', ', $headers));
-
-    if ($credentials) {
-      header('Access-Control-Allow-Credentials: true');
-    }
-
-    if ($maxAge !== null) {
-      header('Access-Control-Max-Age: ' . $maxAge);
-    }
-  }
-
-  /**
    * JSON response helper
    */
   public function json(
     array $data,
     int $status = 200
   ) {
+    // Clear any buffered output (e.g. Tracy Debugger) before sending JSON.
+    while (ob_get_level()) ob_end_clean();
+
     http_response_code($status);
 
     echo json_encode(

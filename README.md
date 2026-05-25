@@ -31,9 +31,9 @@ Lightweight modular API router for ProcessWire. Hooks `/api/{route}/{endpoint}/`
 2. The URL prefix is stripped, leaving `route/endpoint`.
 3. ApiRouter builds a **route registry** by scanning the filesystem for modules that contain an `api/` subdirectory. Route names are auto-derived from module class names (`CamelCase` → `kebab-case`). The registry is **cached indefinitely** and invalidated automatically on `Modules::refresh`.
 4. The matching module is resolved, and checks run in this order:
-   - **CORS headers** are sent first (if enabled). `OPTIONS` preflight requests return `204 No Content` immediately at this point, before any auth check, so browser preflight passes even when auth is required.
-   - **Auth** — Bearer token validated against `$config->apiKeys` (if enabled).
-   - **Login** — ProcessWire session check (if enabled).
+   - **CORS headers** are sent via the **Auth** module. `OPTIONS` preflight requests return `204 No Content` immediately at this point, before any auth check, so browser preflight passes even when auth is required.
+   - **API key** — Bearer token validated against `$config->apiKeys` (controlled by Auth module config).
+   - **Login** — ProcessWire session check (if enabled in ApiRouter config).
 5. The endpoint file is resolved: the router first checks `site/api/{route}/{endpoint}.php` for a site-level override, then falls back to `site/modules/{Module}/api/{endpoint}.php`.
 6. If the file returns an array, it is automatically JSON-encoded and sent. If it echoes output directly, that is sent as-is.
 
@@ -264,19 +264,17 @@ Endpoints without a `_meta` key are silently excluded from the spec. See the [Op
 
 ## Authentication
 
-### How It Works
+> **Auth is delegated to the [Auth](../Auth/) module.** API key validation and CORS are configured there — ApiRouter only controls the **Require Login** toggle.
 
-When **Require API Key** is enabled in the ApiRouter module settings, every request must include a valid **Bearer token** in the `Authorization` header:
+### API Key Auth
+
+When **Require API Key** is enabled in **Admin → Modules → Auth**, every request must include a valid Bearer token:
 
 ```
 Authorization: Bearer YOUR_API_KEY
 ```
 
-The token is looked up against a named key map defined in `$config->apiKeys` (in `site/config.php`). If the token matches, the **client name** is stored and made available as `$apiClient` inside endpoint files. If no match is found, a `401 Unauthorized` response is returned.
-
-### Configuring API Keys
-
-In `site/config.php`, add an associative array of named keys:
+Keys are defined in `site/config.php`:
 
 ```php
 $config->apiKeys = [
@@ -286,9 +284,9 @@ $config->apiKeys = [
 ];
 ```
 
-A request sent with `Authorization: Bearer xyz456secrettoken` will result in `$apiClient === 'mobile'` inside the endpoint.
+On success, the resolved client name is available as `$apiClient` inside endpoint files.
 
-> **Note:** If `$config->apiKeys` is empty or not defined, all authenticated routes will reject every request even when **Require API Key** is enabled.
+> **Note:** If `$config->apiKeys` is empty or undefined, all authenticated requests will be rejected even when **Require API Key** is enabled.
 
 ### Making Authenticated Requests (JavaScript)
 
@@ -342,18 +340,18 @@ const data = await response.json();
 
 ### Enabling / Disabling Auth
 
-Toggle **Require API Key (Global)** in admin → Modules → ApiRouter. This applies to all routes. To expose a fully public API, leave the checkbox unchecked.
+Toggle **Require API Key** in **Admin → Modules → Auth**. This applies to all routes served by ApiRouter and JsonApi. To expose a fully public API, leave the checkbox unchecked.
 
 ---
 
 ## Login-Gated Routes
 
-Enable **Require Login (Global)** in admin → Modules → ApiRouter to restrict all routes to **logged-in ProcessWire users only**. Any request made by a guest session will receive a `401 Unauthorized` response.
+Enable **Require Login** in **Admin → Modules → ApiRouter** to restrict all routes to **logged-in ProcessWire users only**. Any request made by a guest session will receive a `401 Unauthorized` response.
 
 The check uses ProcessWire's built-in `wire('user')->isLoggedin()`. This is independent of the **Require API Key** setting — you can combine both, use either one alone, or leave both off for fully public access:
 
-| Require API Key | Require Login | Who can access |
-|-----------------|---------------|----------------|
+| Require API Key (Auth) | Require Login (ApiRouter) | Who can access |
+|------------------------|---------------------------|----------------|
 | off | off | Everyone |
 | on  | off | Valid Bearer token holders |
 | off | on  | Logged-in PW users (no token needed) |
@@ -363,22 +361,11 @@ The check uses ProcessWire's built-in `wire('user')->isLoggedin()`. This is inde
 
 ## CORS
 
-CORS is configured globally in admin → Modules → ApiRouter. CORS headers are sent **before** auth and login checks run. `OPTIONS` preflight requests return `204 No Content` immediately after the CORS headers are sent, so browsers can complete the preflight handshake even when **Require API Key** or **Require Login** is enabled.
+CORS is configured globally in **Admin → Modules → Auth** and applies to all routes (ApiRouter, JsonApi, and the Auth endpoints themselves).
 
-### Settings
+CORS headers are sent **before** auth and login checks run. `OPTIONS` preflight requests return `204 No Content` immediately after CORS headers are sent, so browsers complete the preflight handshake even when auth is required.
 
-| Setting | Description |
-|---------|-------------|
-| **Enable CORS** | Send CORS headers on all responses. |
-| **Allowed Origins** | Comma-separated origins, or `*` for all. E.g. `https://app.example.com, https://staging.example.com`. |
-| **Allowed Methods** | Comma-separated HTTP methods. `OPTIONS` is always included automatically. |
-| **Allowed Headers** | Comma-separated request headers the browser is permitted to send. |
-| **Allow Credentials** | Sends `Access-Control-Allow-Credentials: true`. Cannot be combined with wildcard origin. |
-| **Preflight Max Age** | Seconds browsers may cache the preflight response (`Access-Control-Max-Age`). Leave blank to omit. |
-
-When **Allowed Origins** is set to a comma-separated list of specific domains, the router reflects the incoming `Origin` header if it matches the list and appends `Vary: Origin` automatically.
-
-> **Note:** When **Allow Credentials** is enabled, **Allowed Origins** must be a specific domain or list of domains — browsers reject `Access-Control-Allow-Credentials: true` combined with `Access-Control-Allow-Origin: *`.
+See the [Auth module README](../Auth/README.md) for the full list of CORS settings.
 
 ---
 

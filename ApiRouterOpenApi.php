@@ -38,7 +38,7 @@ class ApiRouterOpenApi extends WireData {
       }
 
       $iterator = new \RecursiveIteratorIterator(
-        new \RecursiveDirectoryIterator($apiPath)
+        new \RecursiveDirectoryIterator($apiPath, \FilesystemIterator::SKIP_DOTS)
       );
 
       foreach ($iterator as $file) {
@@ -98,9 +98,17 @@ class ApiRouterOpenApi extends WireData {
         );
 
         /**
-         * Load endpoint metadata
+         * Load endpoint metadata — buffer output to prevent endpoint
+         * side-effects (echo, debug output) from polluting the spec JSON.
          */
-        $endpoint = include($fullPath);
+        ob_start();
+        try {
+          $endpoint = include($fullPath);
+        } catch (\Throwable $e) {
+          ob_end_clean();
+          continue; // skip endpoints that fail to load cleanly
+        }
+        ob_end_clean();
 
         $meta = $endpoint['_meta'] ?? [];
 
@@ -323,9 +331,7 @@ class ApiRouterOpenApi extends WireData {
    * Output JSON
    */
   public function renderJson() {
-    header(
-      'Content-Type: application/json'
-    );
+    header('Content-Type: application/json; charset=utf-8');
 
     echo json_encode(
       $this->generate(),
